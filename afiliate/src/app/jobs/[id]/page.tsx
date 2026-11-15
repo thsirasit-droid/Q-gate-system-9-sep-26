@@ -112,6 +112,13 @@ export default function JobPage() {
           src={`/api/jobs/${job.id}/media?kind=video`}
           controls
           playsInline
+          preload="auto"
+          onLoadedMetadata={(event) => {
+            const el = event.currentTarget;
+            el.muted = false;
+            el.defaultMuted = false;
+            el.volume = 1;
+          }}
           poster={job.imageCount ? `/api/jobs/${job.id}/media?kind=image&n=0` : undefined}
         />
       ) : (

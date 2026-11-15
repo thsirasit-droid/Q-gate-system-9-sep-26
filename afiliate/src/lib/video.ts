@@ -22,16 +22,19 @@ export async function ffmpegAvailable(): Promise<boolean> {
 }
 
 async function durationOf(file: string): Promise<number> {
+  let text = "";
   try {
-    await execFileAsync(ffmpegBin(), ["-i", file, "-f", "null", "-"], {
+    const result = await execFileAsync(ffmpegBin(), ["-hide_banner", "-i", file, "-f", "null", "-"], {
       timeout: 20_000,
     });
+    text = `${result.stderr ?? ""}`;
   } catch (error) {
-    const text = error instanceof Error ? `${error.message}\n${String((error as { stderr?: string }).stderr ?? "")}` : "";
-    const match = text.match(/Duration: (\d+):(\d+):(\d+\.\d+)/);
-    if (match) {
-      return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-    }
+    const err = error as { stderr?: string; message?: string };
+    text = `${err.message ?? ""}\n${err.stderr ?? ""}`;
+  }
+  const match = text.match(/Duration: (\d+):(\d+):(\d+(?:\.\d+)?)/);
+  if (match) {
+    return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
   }
   return 0;
 }
@@ -90,16 +93,30 @@ export async function renderVerticalClip(opts: {
   } else {
     args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
   }
+  // Chrome/Safari often skip AAC at espeak's 22050 Hz mono. Always mix to 44.1 kHz stereo.
   args.push(
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
     "-vf",
     vf,
+    "-af",
+    "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
     "-c:v",
     "libx264",
     "-pix_fmt",
     "yuv420p",
     "-c:a",
     "aac",
-    "-shortest",
+    "-ar",
+    "44100",
+    "-ac",
+    "2",
+    "-b:a",
+    "160k",
+    "-t",
+    duration.toFixed(2),
     "-movflags",
     "+faststart",
     "clip.mp4",

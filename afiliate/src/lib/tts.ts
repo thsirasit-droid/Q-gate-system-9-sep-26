@@ -55,11 +55,15 @@ async function espeakSpeak(text: string, wavPath: string): Promise<Buffer> {
   const textPath = path.join(path.dirname(wavPath), "speech.txt");
   assertTempPath(textPath);
   await writeFile(textPath, text, "utf8");
-  await execFileAsync("espeak-ng", ["-v", "th", "-s", "145", "-w", wavPath, "-f", textPath], {
+  await execFileAsync("espeak-ng", ["-v", "th", "-s", "145", "-a", "160", "-w", wavPath, "-f", textPath], {
     timeout: 20_000,
     maxBuffer: 2_000_000,
   });
-  return readFile(wavPath);
+  const wav = await readFile(wavPath);
+  if (wav.length < 1000) {
+    throw new Error("espeak-ng ไม่ได้สร้างไฟล์เสียง");
+  }
+  return wav;
 }
 
 export async function speakThai(text: string, wavPath: string): Promise<SpeechResult> {
@@ -93,13 +97,8 @@ export async function speakThai(text: string, wavPath: string): Promise<SpeechRe
       mode: "espeak",
       note: "พากย์สำรองด้วย espeak-ng (เสียงหุ่นยนต์กว่า Google) เพราะยังไม่มีคีย์ Google TTS",
     };
-  } catch {
-    await writeFile(wavPath, "");
-    return {
-      audio: null,
-      mime: null,
-      mode: "captions",
-      note: "ยังไม่มีเสียงพากย์ — คลิปนี้มีแต่ซับภาษาไทย จนกว่าจะใส่คีย์ Google TTS",
-    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown";
+    throw new Error(`ทำเสียงพากย์ไทยไม่สำเร็จ (${detail})`);
   }
 }
