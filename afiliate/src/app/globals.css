@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Noto Sans Thai";
+  src: url("/fonts/NotoSansThai-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Noto Sans Thai";
+  src: url("/fonts/NotoSansThai-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-display: swap;
+}
+
+html,
+body {
+  min-height: 100%;
+}
+
+body {
+  background: #f7f1e8;
+  color: #1c1410;
+}
+
+textarea,
+input,
+button {
+  font: inherit;
+}
+
+::selection {
+  background: #c23a2b33;
+}
