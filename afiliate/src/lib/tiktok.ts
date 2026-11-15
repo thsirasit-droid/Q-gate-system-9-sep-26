@@ -37,7 +37,7 @@ export async function tiktokProductByUrl(rawUrl: string): Promise<ProductInfo> {
     // keep original
   }
   const productId = parseTiktokProductId(url);
-  if (!productId) {
+  if (!productId || !/^\d{1,20}$/.test(productId)) {
     throw new Error("อ่านรหัสสินค้า TikTok Shop จากลิงก์นี้ไม่ได้ ลองวางลิงก์หน้าร้านแบบเต็ม");
   }
   const path = "/affiliate_creator/202509/open_collaborations/products";

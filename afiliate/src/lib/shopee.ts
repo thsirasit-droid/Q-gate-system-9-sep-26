@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { fetchAllowed, resolveRedirects } from "./http";
-import { parseShopeeIds } from "./urls";
+import { fetchAllowed, hostAllowed, resolveRedirects } from "./http";
+import { digitsOnly, parseShopeeIds, SHOPEE_PAGE_HOSTS } from "./urls";
 import { secrets } from "./env";
 import type { ProductInfo } from "./types";
 
@@ -12,7 +12,7 @@ function authHeader(appId: string, secret: string, timestamp: string): string {
   return `SHA256 Credential=${appId}, Signature=${signature}, Timestamp=${timestamp}`;
 }
 
-async function graphql<T>(query: string): Promise<T> {
+async function graphql<T>(query: string, variables?: Record<string, unknown>): Promise<T> {
   const s = secrets();
   if (!s.shopeeAppId || !s.shopeeSecret) {
     throw new Error("ยังไม่มีคีย์ Shopee Affiliate");
@@ -24,7 +24,7 @@ async function graphql<T>(query: string): Promise<T> {
       "content-type": "application/json",
       authorization: authHeader(s.shopeeAppId, s.shopeeSecret, timestamp),
     },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify(variables ? { query, variables } : { query }),
     timeoutMs: 15_000,
     maxBytes: 800_000,
   });
@@ -86,11 +86,17 @@ export async function shopeeProductByUrl(rawUrl: string): Promise<ProductInfo> {
     // keep original if resolve fails; GraphQL may still accept it
   }
   const ids = parseShopeeIds(url);
-  const args = ids
-    ? `itemId: ${ids.itemId}, shopId: ${ids.shopId}, page: 1, limit: 5`
-    : `keyword: ${JSON.stringify(url)}, page: 1, limit: 5`;
+  const itemId = digitsOnly(ids?.itemId);
+  const shopId = digitsOnly(ids?.shopId);
   const data = await graphql<{ productOfferV2?: { nodes?: OfferNode[] } }>(
-    `{ productOfferV2(${args}) { nodes { itemId productName imageUrl priceMin priceMax productLink offerLink shopName shopId } } }`,
+    `query Product($itemId: Int64, $shopId: Int64, $keyword: String) {
+      productOfferV2(itemId: $itemId, shopId: $shopId, keyword: $keyword, page: 1, limit: 5) {
+        nodes { itemId productName imageUrl priceMin priceMax productLink offerLink shopName shopId }
+      }
+    }`,
+    itemId && shopId
+      ? { itemId, shopId, keyword: null }
+      : { itemId: null, shopId: null, keyword: url.slice(0, 200) },
   );
   const node = data.productOfferV2?.nodes?.[0];
   if (!node) throw new Error("Shopee หาสินค้าจากลิงก์นี้ไม่เจอ ลองวางลิงก์หน้าร้านแบบเต็ม");
@@ -98,8 +104,20 @@ export async function shopeeProductByUrl(rawUrl: string): Promise<ProductInfo> {
 }
 
 export async function shopeeShortLink(originUrl: string): Promise<string | null> {
+  let parsed: URL;
+  try {
+    parsed = new URL(originUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== "https:" || !hostAllowed(parsed.hostname, SHOPEE_PAGE_HOSTS)) {
+    return null;
+  }
   const data = await graphql<{ generateShortLink?: { shortLink?: string } }>(
-    `mutation { generateShortLink(input:{ originUrl: ${JSON.stringify(originUrl)}, subIds: ["afiliate"] }) { shortLink } }`,
+    `mutation Short($originUrl: String!) {
+      generateShortLink(input:{ originUrl: $originUrl, subIds: ["afiliate"] }) { shortLink }
+    }`,
+    { originUrl: parsed.toString().slice(0, 500) },
   );
   return data.generateShortLink?.shortLink ?? null;
 }

@@ -4,6 +4,7 @@ import path from "node:path";
 import { asBuffer, sql } from "./db";
 import { downloadProductImage, resolveProduct, sampleProduct } from "./product";
 import { writeThaiCopy } from "./script";
+import { sanitizeSpeech } from "./text";
 import { speakThai } from "./tts";
 import { ffmpegAvailable, renderVerticalClip } from "./video";
 import { postToShopee } from "./post-shopee";
@@ -275,7 +276,7 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
   if (!row) throw new Error("ไม่พบงาน");
   const product = parseProduct(row.product);
   if (!product) throw new Error("ไม่มีข้อมูลสินค้า");
-  const nextScript = (scriptText ?? row.script_text).trim().slice(0, 400);
+  const nextScript = sanitizeSpeech(scriptText ?? row.script_text);
   if (!nextScript) throw new Error("ใส่บทพากย์ก่อนนะ");
   const copy = writeThaiCopy(product);
   copy.script = nextScript;

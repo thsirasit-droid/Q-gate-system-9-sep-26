@@ -59,6 +59,7 @@ export async function renderVerticalClip(opts: {
   const lines: string[] = [];
   opts.images.forEach((image, index) => {
     const rel = path.basename(image);
+    if (!/^[a-zA-Z0-9._-]+$/.test(rel)) throw new Error("ชื่อไฟล์รูปไม่ถูกต้อง");
     lines.push(`file '${rel}'`);
     lines.push(`duration ${perImage.toFixed(3)}`);
     if (index === opts.images.length - 1) lines.push(`file '${rel}'`);
@@ -83,7 +84,9 @@ export async function renderVerticalClip(opts: {
     "slides.txt",
   ];
   if (opts.audioPath) {
-    args.push("-i", path.basename(opts.audioPath));
+    const audioRel = path.basename(opts.audioPath);
+    if (!/^[a-zA-Z0-9._-]+$/.test(audioRel)) throw new Error("ชื่อไฟล์เสียงไม่ถูกต้อง");
+    args.push("-i", audioRel);
   } else {
     args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
   }

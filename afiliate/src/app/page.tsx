@@ -6,18 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/labels";
 import type { JobPublic, JobStatus } from "@/lib/types";
 
-type StatusPayload = {
-  viewer: { name: string; simulated: boolean } | null;
-  connections: {
-    shopeeAffiliate: boolean;
-    shopeeVideo: boolean;
-    tiktokShop: boolean;
-    googleTts: boolean;
-    ffmpeg: boolean;
-    sampleMode: boolean;
-  };
-};
-
 function toneClass(status: JobStatus): string {
   const tone = STATUS_TONE[status];
   if (tone === "go") return "text-moss";
@@ -26,20 +14,11 @@ function toneClass(status: JobStatus): string {
   return "text-mute";
 }
 
-function Dot({ on, label }: { on: boolean; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-[12px] text-mute">
-      <span className={`h-2 w-2 rounded-full ${on ? "bg-moss" : "bg-sand"}`} />
-      {label}
-    </span>
-  );
-}
-
 export default function HomePage() {
   const router = useRouter();
   const [url, setUrl] = useState("");
   const [jobs, setJobs] = useState<JobPublic[]>([]);
-  const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [simulated, setSimulated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -49,7 +28,10 @@ export default function HomePage() {
       const payload = (await jobsRes.json()) as { jobs: JobPublic[] };
       setJobs(payload.jobs);
     }
-    if (statusRes.ok) setStatus((await statusRes.json()) as StatusPayload);
+    if (statusRes.ok) {
+      const payload = (await statusRes.json()) as { viewer?: { simulated?: boolean } };
+      setSimulated(Boolean(payload.viewer?.simulated));
+    }
   }, []);
 
   useEffect(() => {
@@ -80,35 +62,30 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto min-h-dvh max-w-[430px] px-4 pb-16 pt-6">
-      <header className="mb-6">
-        <p className="text-[13px] tracking-wide text-mute">แอปมือถือ · คลิปนายหน้า</p>
-        <h1 className="mt-1 text-[32px] font-bold leading-none">อะฟิลิเอต</h1>
-        <p className="mt-2 text-[15px] leading-6 text-mute">
-          วางลิงก์ Shopee หรือ TikTok Shop แล้วได้คลิปแนวตั้ง พากย์ไทย มีซับ
-        </p>
+      <header className="mb-5">
+        <h1 className="text-[32px] font-bold leading-none">อะฟิลิเอต</h1>
+        <p className="mt-2 text-[16px] leading-6 text-mute">วางลิงก์ ดูคลิป แล้วโพสต์ไป Shopee</p>
       </header>
 
-      <section className="mb-5 flex flex-wrap gap-x-4 gap-y-2">
-        <Dot on={Boolean(status?.connections.shopeeAffiliate)} label="Shopee สินค้า" />
-        <Dot on={Boolean(status?.connections.shopeeVideo)} label="Shopee คลิป" />
-        <Dot on={Boolean(status?.connections.tiktokShop)} label="TikTok Shop" />
-        <Dot on={Boolean(status?.connections.googleTts)} label="เสียง Google" />
-      </section>
+      <ol className="mb-5 space-y-1 text-[14px] leading-6 text-mute">
+        <li>1. วางลิงก์สินค้า Shopee หรือ TikTok Shop</li>
+        <li>2. รอคลิปพากย์ไทยสักครู่ แล้วดูพรีวิว</li>
+        <li>3. กดโพสต์ไป Shopee หรือดาวน์โหลดไปอัปโหลดในแอป</li>
+      </ol>
 
-      {status?.viewer?.simulated ? (
+      {simulated ? (
         <p className="mb-4 rounded-lg bg-sand px-3 py-2 text-[13px] leading-5 text-mute">
           ตอนนี้เปิดบนเครื่องพัฒนา ผู้ชมเป็นตัวจำลอง ไม่ใช่การล็อกอินจริง
         </p>
       ) : null}
 
       <form
-        className="mb-3"
         onSubmit={(event) => {
           event.preventDefault();
           void createJob({ url });
         }}
       >
-        <label className="mb-2 block text-[14px] font-bold" htmlFor="product-url">
+        <label className="mb-2 block text-[15px] font-bold" htmlFor="product-url">
           วางลิงก์สินค้า
         </label>
         <textarea
@@ -116,35 +93,33 @@ export default function HomePage() {
           value={url}
           onChange={(event) => setUrl(event.target.value)}
           rows={3}
-          placeholder="https://shopee.co.th/..."
+          placeholder="วางลิงก์จากแอป Shopee หรือ TikTok Shop"
           className="w-full resize-none rounded-xl border border-sand bg-white px-3 py-3 text-[16px] outline-none ring-brick focus:ring-2"
         />
         <button
           type="submit"
           disabled={busy}
-          className="mt-3 w-full rounded-xl bg-brick py-3.5 text-[17px] font-bold text-white disabled:opacity-60"
+          className="mt-3 w-full rounded-xl bg-brick py-3.5 text-[18px] font-bold text-white disabled:opacity-60"
         >
-          {busy ? "กำลังทำคลิป… รอสักครู่" : "สร้างคลิป"}
+          {busy ? "กำลังทำคลิป… รอประมาณ 20 วินาที" : "สร้างคลิป"}
         </button>
       </form>
 
-      <div className="mb-6 flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void createJob({ sample: true, sampleKind: "shopee" })}
-          className="flex-1 rounded-xl border border-sand bg-white py-3 text-[14px] font-bold disabled:opacity-60"
-        >
-          ลองสินค้าตัวอย่าง
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => void createJob({ sample: true, sampleKind: "shopee" })}
+        className="mt-2 w-full rounded-xl border border-sand bg-white py-3 text-[15px] font-bold disabled:opacity-60"
+      >
+        ยังไม่มีลิงก์ — ลองสินค้าตัวอย่าง
+      </button>
 
-      {error ? <p className="mb-4 text-[14px] leading-5 text-brick">{error}</p> : null}
+      {error ? <p className="mt-3 text-[14px] leading-5 text-brick">{error}</p> : null}
 
-      <section>
-        <h2 className="mb-3 text-[16px] font-bold">งานของฉัน</h2>
+      <section className="mt-8">
+        <h2 className="mb-3 text-[16px] font-bold">คลิปของฉัน</h2>
         {jobs.length === 0 ? (
-          <p className="text-[14px] leading-6 text-mute">ยังไม่มีคลิป กดสร้างจากลิงก์หรือสินค้าตัวอย่างได้เลย</p>
+          <p className="text-[14px] leading-6 text-mute">ยังไม่มีคลิป กดสร้างด้านบนได้เลย</p>
         ) : (
           <ul className="divide-y divide-sand overflow-hidden rounded-xl border border-sand bg-white">
             {jobs.map((job) => (
@@ -160,7 +135,7 @@ export default function HomePage() {
                   </div>
                   <p className="mt-1 text-[12px] text-mute">
                     {job.platform === "shopee" ? "Shopee" : "TikTok Shop"}
-                    {job.sample ? " · ข้อมูลตัวอย่าง" : ""}
+                    {job.sample ? " · ตัวอย่าง" : ""}
                   </p>
                 </Link>
               </li>
@@ -170,8 +145,8 @@ export default function HomePage() {
       </section>
 
       <p className="mt-10 text-[12px] leading-5 text-mute">
-        ปักไอคอนไว้หน้าจอ: iPhone เปิดใน Safari กดแชร์ แล้วเลือก “เพิ่มไปยังหน้าจอโฮม” · Android เปิดใน Chrome กดเมนู
-        แล้วเลือก “เพิ่มไปยังหน้าจอหลัก”
+        ใช้ทุกวัน: iPhone เปิดใน Safari → แชร์ → เพิ่มไปยังหน้าจอโฮม · Android เปิดใน Chrome → เมนู →
+        เพิ่มไปยังหน้าจอหลัก
       </p>
     </main>
   );
