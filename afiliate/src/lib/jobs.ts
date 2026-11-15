@@ -244,9 +244,9 @@ export async function processJob(id: string, owner: string): Promise<void> {
     const speech = await speakThai(copy.script, wavPath);
     let audioPath: string | null = null;
     if (speech.audio) {
-      audioPath = path.join(workDir, speech.mode === "google" ? "voice.mp3" : "voice.wav");
+      audioPath = wavPath;
       await writeFile(audioPath, speech.audio);
-      await setJob(id, { audio: speech.audio, audio_mime: speech.mime, voice_mode: speech.mode });
+      await setJob(id, { audio: speech.audio, audio_mime: speech.mime ?? "audio/wav", voice_mode: speech.mode });
     } else {
       await setJob(id, { voice_mode: "captions" });
     }
@@ -311,9 +311,9 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
     const speech = await speakThai(nextScript, wavPath);
     let audioPath: string | null = null;
     if (speech.audio) {
-      audioPath = path.join(workDir, speech.mode === "google" ? "voice.mp3" : "voice.wav");
+      audioPath = wavPath;
       await writeFile(audioPath, speech.audio);
-      await setJob(id, { audio: speech.audio, audio_mime: speech.mime, voice_mode: speech.mode });
+      await setJob(id, { audio: speech.audio, audio_mime: speech.mime ?? "audio/wav", voice_mode: speech.mode });
     }
     await setJob(id, { status: "rendering" });
     const clip = await renderVerticalClip({

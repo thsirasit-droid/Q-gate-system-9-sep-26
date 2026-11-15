@@ -2,9 +2,122 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { STATUS_LABEL, STATUS_TONE } from "@/lib/labels";
 import type { JobPublic } from "@/lib/types";
+
+function ClipPreview({ job }: { job: JobPublic }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const gainRef = useRef<{ ctx: AudioContext; connected: boolean } | null>(null);
+  const [needsTap, setNeedsTap] = useState(false);
+
+  const boostGraph = useCallback((video: HTMLVideoElement) => {
+    if (gainRef.current?.connected) return;
+    try {
+      const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = gainRef.current?.ctx ?? new Ctx();
+      const source = ctx.createMediaElementSource(video);
+      const gain = ctx.createGain();
+      gain.gain.value = 3.5;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      gainRef.current = { ctx, connected: true };
+      void ctx.resume();
+    } catch {
+      // Native element playback still runs if Web Audio cannot attach.
+    }
+  }, []);
+
+  const unlock = useCallback(async () => {
+    const video = videoRef.current;
+    const audio = audioRef.current;
+    if (video) {
+      video.muted = false;
+      video.defaultMuted = false;
+      video.volume = 1;
+      boostGraph(video);
+      if (gainRef.current?.ctx.state === "suspended") {
+        await gainRef.current.ctx.resume().catch(() => undefined);
+      }
+    }
+    if (audio) {
+      audio.muted = false;
+      audio.volume = 1;
+    }
+    try {
+      await video?.play();
+      setNeedsTap(false);
+    } catch {
+      setNeedsTap(true);
+    }
+    try {
+      await audio?.play();
+    } catch {
+      // Video track is enough when the standalone voiceover cannot autoplay.
+    }
+  }, [boostGraph]);
+
+  useEffect(() => {
+    void unlock();
+  }, [unlock, job.id, job.updatedAt]);
+
+  const bust = encodeURIComponent(job.updatedAt);
+
+  return (
+    <>
+      <div className="relative mt-4">
+        <video
+          ref={videoRef}
+          className="w-full rounded-xl bg-black"
+          src={`/api/jobs/${job.id}/media?kind=video&v=${bust}`}
+          controls
+          autoPlay
+          loop
+          playsInline
+          preload="auto"
+          onEnded={(event) => {
+            const el = event.currentTarget;
+            el.currentTime = 0;
+            void unlock();
+          }}
+          onLoadedMetadata={(event) => {
+            const el = event.currentTarget;
+            el.muted = false;
+            el.defaultMuted = false;
+            el.volume = 1;
+            void unlock();
+          }}
+          poster={job.imageCount ? `/api/jobs/${job.id}/media?kind=image&n=0` : undefined}
+        />
+        {needsTap ? (
+          <button
+            type="button"
+            onClick={() => void unlock()}
+            className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/55 text-[18px] font-bold text-white"
+          >
+            แตะเพื่อเปิดเสียงพากย์
+          </button>
+        ) : null}
+      </div>
+      {job.hasAudio ? (
+        <audio
+          ref={audioRef}
+          className="mt-2 w-full"
+          src={`/api/jobs/${job.id}/media?kind=audio&v=${bust}`}
+          controls
+          autoPlay
+          preload="auto"
+          onLoadedMetadata={(event) => {
+            event.currentTarget.muted = false;
+            event.currentTarget.volume = 1;
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
 
 export default function JobPage() {
   const params = useParams<{ id: string }>();
@@ -107,20 +220,7 @@ export default function JobPage() {
       </p>
 
       {job.hasVideo ? (
-        <video
-          className="mt-4 w-full rounded-xl bg-black"
-          src={`/api/jobs/${job.id}/media?kind=video`}
-          controls
-          playsInline
-          preload="auto"
-          onLoadedMetadata={(event) => {
-            const el = event.currentTarget;
-            el.muted = false;
-            el.defaultMuted = false;
-            el.volume = 1;
-          }}
-          poster={job.imageCount ? `/api/jobs/${job.id}/media?kind=image&n=0` : undefined}
-        />
+        <ClipPreview job={job} />
       ) : (
         <div className="mt-4 rounded-xl bg-sand px-4 py-16 text-center text-[14px] text-mute">
           ยังไม่มีคลิปพรีวิว

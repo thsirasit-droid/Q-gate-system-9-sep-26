@@ -91,9 +91,9 @@ export async function renderVerticalClip(opts: {
     if (!/^[a-zA-Z0-9._-]+$/.test(audioRel)) throw new Error("ชื่อไฟล์เสียงไม่ถูกต้อง");
     args.push("-i", audioRel);
   } else {
-    args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=44100");
+    args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   }
-  // Chrome/Safari often skip AAC at espeak's 22050 Hz mono. Always mix to 44.1 kHz stereo.
+  // 48 kHz stereo AAC-LC so Chrome actually decodes the mix. Speech is already loudified.
   args.push(
     "-map",
     "0:v:0",
@@ -102,19 +102,21 @@ export async function renderVerticalClip(opts: {
     "-vf",
     vf,
     "-af",
-    "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
+    "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
     "-c:v",
     "libx264",
     "-pix_fmt",
     "yuv420p",
     "-c:a",
     "aac",
+    "-profile:a",
+    "aac_low",
     "-ar",
-    "44100",
+    "48000",
     "-ac",
     "2",
     "-b:a",
-    "160k",
+    "192k",
     "-t",
     duration.toFixed(2),
     "-movflags",

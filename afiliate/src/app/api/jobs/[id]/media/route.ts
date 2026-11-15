@@ -30,11 +30,13 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const mime =
     kind === "audio" ? (row.audio_mime ?? "audio/mpeg") : (row.video_mime ?? "video/mp4");
   if (!data) return json({ error: "ยังไม่มีไฟล์" }, 404);
-  const filename = kind === "audio" ? `afiliate-${id}.mp3` : `afiliate-${id}.mp4`;
+  const filename = kind === "audio" ? `afiliate-${id}.wav` : `afiliate-${id}.mp4`;
   return new Response(new Uint8Array(data), {
     headers: {
       "content-type": mime,
-      "cache-control": "private, no-store",
+      "content-length": String(data.length),
+      "accept-ranges": "bytes",
+      "cache-control": "private, max-age=30",
       ...(download
         ? { "content-disposition": `attachment; filename="${filename}"` }
         : {}),
