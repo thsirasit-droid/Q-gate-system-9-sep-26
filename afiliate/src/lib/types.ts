@@ -27,7 +27,7 @@ export type ProductInfo = {
   productId: string | null;
   shopId: string | null;
   description: string;
-  source: "api" | "sample";
+  source: "api" | "page" | "sample";
   sample: boolean;
 };
 

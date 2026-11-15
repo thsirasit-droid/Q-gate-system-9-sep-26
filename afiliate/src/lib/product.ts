@@ -1,7 +1,7 @@
 import { fetchAllowed } from "./http";
 import { SAMPLE_SHOPEE, SAMPLE_TIKTOK } from "./sample-data";
 import { secrets } from "./env";
-import { shopeeProductByUrl, shopeeShortLink } from "./shopee";
+import { shopeeProductByUrl, shopeeProductFromPublicPage, shopeeShortLink } from "./shopee";
 import { tiktokProductByUrl } from "./tiktok";
 import { detectPlatform, SHOPEE_PAGE_HOSTS, TIKTOK_PAGE_HOSTS } from "./urls";
 import type { ProductInfo } from "./types";
@@ -13,10 +13,24 @@ const IMAGE_HOSTS = [
   ...TIKTOK_PAGE_HOSTS,
   "susercontent.com",
   "cf.shopee.co.th",
+  "cf.shopee.com",
+  "down-th.img.susercontent.com",
+  "down-bs.img.susercontent.com",
   "ibyteimg.com",
   "tiktokcdn.com",
   "tiktokcdn-us.com",
 ];
+
+async function maybeAffiliateLink(product: ProductInfo): Promise<ProductInfo> {
+  const s = secrets();
+  if (!s.shopeeAppId || !s.shopeeSecret) return product;
+  try {
+    product.affiliateUrl = (await shopeeShortLink(product.productUrl)) ?? product.affiliateUrl ?? null;
+  } catch {
+    product.affiliateUrl = product.affiliateUrl ?? null;
+  }
+  return product;
+}
 
 export async function resolveProduct(rawUrl: string): Promise<ProductInfo> {
   const platform = detectPlatform(rawUrl);
@@ -27,17 +41,13 @@ export async function resolveProduct(rawUrl: string): Promise<ProductInfo> {
   if (platform === "shopee") {
     const s = secrets();
     if (s.shopeeAppId && s.shopeeSecret) {
-      const product = await shopeeProductByUrl(rawUrl);
       try {
-        product.affiliateUrl = await shopeeShortLink(product.productUrl);
+        return await maybeAffiliateLink(await shopeeProductByUrl(rawUrl));
       } catch {
-        product.affiliateUrl = product.affiliateUrl ?? null;
+        // Affiliate API is optional; public page fetch still makes the clip.
       }
-      return product;
     }
-    throw new Error(
-      "ยังไม่ได้ใส่คีย์ Shopee Affiliate จึงดึงสินค้าจริงไม่ได้ กด “ลองสินค้าตัวอย่าง” ได้เลย หรือใส่คีย์ในที่เก็บความลับของ Cursor",
-    );
+    return maybeAffiliateLink(await shopeeProductFromPublicPage(rawUrl));
   }
   const s = secrets();
   if (s.tiktokAppKey && s.tiktokAppSecret && s.tiktokAccessToken) {

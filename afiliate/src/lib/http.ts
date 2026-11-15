@@ -98,9 +98,19 @@ export async function fetchAllowed(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
+      const headers = new Headers(init.headers);
+      if (!headers.has("user-agent")) {
+        headers.set(
+          "user-agent",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        );
+      }
+      if (!headers.has("accept-language")) {
+        headers.set("accept-language", "th-TH,th;q=0.9,en-US;q=0.8,en;q=0.7");
+      }
       const response = await fetch(current, {
         method: init.method ?? "GET",
-        headers: init.headers,
+        headers,
         body: init.body,
         redirect: "manual",
         signal: controller.signal,
