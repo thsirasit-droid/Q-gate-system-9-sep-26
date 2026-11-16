@@ -78,6 +78,7 @@ export async function tiktokProductByUrl(rawUrl: string): Promise<ProductInfo> {
     priceValue: amount ? Number(amount) : null,
     currency: node.sales_price?.currency ?? "THB",
     imageUrls: node.main_image_url ? [node.main_image_url] : [],
+    videoUrls: [],
     shopName: node.shop?.name ?? "",
     productUrl: node.detail_link ?? url,
     affiliateUrl: null,

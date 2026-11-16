@@ -21,6 +21,13 @@ const IMAGE_HOSTS = [
   "tiktokcdn-us.com",
 ];
 
+const VIDEO_HOSTS = [
+  ...IMAGE_HOSTS,
+  "cv.shopee.co.th",
+  "cv.shopee.com",
+  "vod.susercontent.com",
+];
+
 async function maybeAffiliateLink(product: ProductInfo): Promise<ProductInfo> {
   const s = secrets();
   if (!s.shopeeAppId || !s.shopeeSecret) return product;
@@ -69,6 +76,18 @@ export async function downloadProductImage(url: string): Promise<{ mime: string;
     const mime = got.contentType.split(";")[0] || "image/jpeg";
     if (!mime.startsWith("image/")) return null;
     return { mime, data: got.buffer };
+  } catch {
+    return null;
+  }
+}
+
+export async function downloadProductVideo(url: string): Promise<{ mime: string; data: Buffer } | null> {
+  if (url.startsWith("/sample/")) return null;
+  try {
+    const got = await fetchAllowed(url, VIDEO_HOSTS, { maxBytes: 8_000_000, timeoutMs: 20_000 });
+    const mime = got.contentType.split(";")[0] || "video/mp4";
+    if (!mime.startsWith("video/") && !url.toLowerCase().includes(".mp4")) return null;
+    return { mime: mime.startsWith("video/") ? mime : "video/mp4", data: got.buffer };
   } catch {
     return null;
   }

@@ -81,6 +81,7 @@ function toProduct(node: OfferNode, fallbackUrl: string): ProductInfo {
     priceValue: Number(node.priceMin ?? node.priceMax ?? 0) || null,
     currency: "THB",
     imageUrls: node.imageUrl ? [String(node.imageUrl)] : [],
+    videoUrls: [],
     shopName: String(node.shopName ?? ""),
     productUrl: String(node.productLink ?? fallbackUrl),
     affiliateUrl: node.offerLink ? String(node.offerLink) : null,
@@ -190,6 +191,32 @@ function asText(value: unknown): string {
   return "";
 }
 
+function asVideos(html: string, ld: Record<string, unknown> | undefined): string[] {
+  const urls: string[] = [];
+  const og =
+    metaContent(html, ["og:video", "og:video:url", "og:video:secure_url", "twitter:player:stream"]) ?? "";
+  if (og) urls.push(og);
+  const ldVideo = ld?.video;
+  if (typeof ldVideo === "string") urls.push(ldVideo);
+  if (ldVideo && typeof ldVideo === "object") {
+    const rec = ldVideo as { contentUrl?: unknown; url?: unknown };
+    urls.push(asText(rec.contentUrl), asText(rec.url));
+  }
+  for (const match of html.matchAll(/https:\/\/[a-zA-Z0-9._/-]+\.mp4(?:\?[a-zA-Z0-9._=&-]*)?/gi)) {
+    urls.push(match[0]);
+  }
+  const unique: string[] = [];
+  for (const raw of urls) {
+    const url = raw.trim();
+    if (!url.startsWith("https://")) continue;
+    if (!/\.mp4(\?|$)/i.test(url) && !/og:video/.test(url) && !/susercontent|shopee|tiktokcdn/.test(url)) {
+      continue;
+    }
+    if (!unique.includes(url)) unique.push(url);
+  }
+  return unique.slice(0, 2);
+}
+
 function asImages(value: unknown): string[] {
   const raw = Array.isArray(value) ? value : value ? [value] : [];
   const urls: string[] = [];
@@ -268,6 +295,7 @@ function productFromHtml(
     priceValue,
     currency: asText(offer?.priceCurrency) || "THB",
     imageUrls: images.slice(0, 6),
+    videoUrls: asVideos(html, ld),
     shopName,
     productUrl: fallbackUrl,
     affiliateUrl: null,

@@ -21,6 +21,7 @@ export type ProductInfo = {
   priceValue: number | null;
   currency: string;
   imageUrls: string[];
+  videoUrls: string[];
   shopName: string;
   productUrl: string;
   affiliateUrl: string | null;

@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { asBuffer, sql } from "./db";
-import { downloadProductImage, resolveProduct, sampleProduct } from "./product";
+import { downloadProductImage, downloadProductVideo, resolveProduct, sampleProduct } from "./product";
 import { writeThaiCopy } from "./script";
 import { sanitizeSpeech } from "./text";
 import { speakThai } from "./tts";
@@ -198,12 +198,13 @@ export async function processJob(id: string, owner: string): Promise<void> {
   await setJob(id, { status: "fetching", error_message: null });
   await sql("delete from job_images where job_id = $1", [id]);
   const images: { mime: string; data: Buffer; name: string }[] = [];
-  for (const url of product.imageUrls.slice(0, 4)) {
+  for (const url of product.imageUrls.slice(0, 6)) {
     const local = await loadLocalSample(url);
     const downloaded = local ?? (await downloadProductImage(url));
     if (downloaded) {
       images.push({ ...downloaded, name: `img${images.length}.jpg` });
     }
+    if (images.length >= 4) break;
   }
   if (images.length === 0) {
     const fallback = await loadLocalSample("/sample/serum.jpg");
@@ -238,6 +239,14 @@ export async function processJob(id: string, owner: string): Promise<void> {
       await writeFile(file, image.data);
       imagePaths.push(file);
     }
+    const videoPaths: string[] = [];
+    for (const url of (product.videoUrls ?? []).slice(0, 2)) {
+      const downloaded = await downloadProductVideo(url);
+      if (!downloaded) continue;
+      const file = path.join(workDir, `seller${videoPaths.length}.mp4`);
+      await writeFile(file, downloaded.data);
+      videoPaths.push(file);
+    }
 
     await setJob(id, { status: "speaking" });
     const wavPath = path.join(workDir, "voice.wav");
@@ -255,6 +264,7 @@ export async function processJob(id: string, owner: string): Promise<void> {
     const clip = await renderVerticalClip({
       workDir,
       images: imagePaths,
+      videos: videoPaths,
       audioPath,
       product,
       sentences: copy.sentences,
@@ -298,14 +308,33 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
       [id],
     );
     const imagePaths: string[] = [];
-    for (const [index, image] of stored.entries()) {
-      const data = asBuffer(image.data);
-      if (!data) continue;
-      const file = path.join(workDir, `img${index}.jpg`);
-      await writeFile(file, data);
+    for (const url of (product.imageUrls ?? []).slice(0, 6)) {
+      const local = await loadLocalSample(url);
+      const downloaded = local ?? (await downloadProductImage(url));
+      if (!downloaded) continue;
+      const file = path.join(workDir, `img${imagePaths.length}.jpg`);
+      await writeFile(file, downloaded.data);
       imagePaths.push(file);
+      if (imagePaths.length >= 4) break;
+    }
+    if (imagePaths.length === 0) {
+      for (const [index, image] of stored.entries()) {
+        const data = asBuffer(image.data);
+        if (!data) continue;
+        const file = path.join(workDir, `img${index}.jpg`);
+        await writeFile(file, data);
+        imagePaths.push(file);
+      }
     }
     if (imagePaths.length === 0) throw new Error("ไม่มีรูปสินค้า");
+    const videoPaths: string[] = [];
+    for (const url of (product.videoUrls ?? []).slice(0, 2)) {
+      const downloaded = await downloadProductVideo(url);
+      if (!downloaded) continue;
+      const file = path.join(workDir, `seller${videoPaths.length}.mp4`);
+      await writeFile(file, downloaded.data);
+      videoPaths.push(file);
+    }
     await setJob(id, { status: "speaking" });
     const wavPath = path.join(workDir, "voice.wav");
     const speech = await speakThai(nextScript, wavPath);
@@ -319,6 +348,7 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
     const clip = await renderVerticalClip({
       workDir,
       images: imagePaths,
+      videos: videoPaths,
       audioPath,
       product,
       sentences: copy.sentences,
