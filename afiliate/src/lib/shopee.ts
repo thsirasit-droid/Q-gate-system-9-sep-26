@@ -137,7 +137,7 @@ export async function shopeeShortLink(originUrl: string): Promise<string | null>
   return data.generateShortLink?.shortLink ?? null;
 }
 
-const GENERIC_TITLE = /^(shopee(\s+thailand)?|ซื้อขายผ่านมือถือ|ช้อปปิ้งออนไลน์)/i;
+const GENERIC_TITLE = /^(shopee(\s+thailand)?|ซื้อขายผ่านมือถือ|ช้อปปิ้งออนไลน์|check out my video)/i;
 
 function decodeEntities(value: string): string {
   return value
@@ -251,6 +251,72 @@ function prettyShopName(username: string | null): string {
     .trim();
 }
 
+function nameFromVideoCaption(caption: string): string {
+  const tags = [...caption.matchAll(/#([A-Za-z0-9_\u0E00-\u0E7F]+)/g)].map((match) => match[1]);
+  const labels: Record<string, string> = {
+    clearnose: "Clearnose",
+    vitaminc: "วิตามินซี",
+    whitening: "ไวท์เทนนิ่ง",
+    skincare: "สกินแคร์",
+    serum: "เซรั่ม",
+  };
+  const lower = tags.map((tag) => tag.toLowerCase()).filter((tag) => !/^shopee/i.test(tag));
+  const preferred = ["clearnose", "vitaminc", "whitening", "skincare", "serum"];
+  const ordered = [...preferred.filter((tag) => lower.includes(tag)), ...lower.filter((tag) => !preferred.includes(tag))];
+  const parts = ordered.map((tag) => labels[tag] ?? tag);
+  if (parts.length) return parts.join(" ").slice(0, 80);
+  const plain = caption.replace(/#\S+/g, " ").replace(/\s+/g, " ").trim();
+  return (plain || "สินค้าจาก Shopee Video").slice(0, 80);
+}
+
+function productFromShopeeVideo(html: string, fallbackUrl: string): ProductInfo | null {
+  const block = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i)?.[1];
+  if (!block) return null;
+  try {
+    const parsed = JSON.parse(block) as {
+      props?: {
+        pageProps?: {
+          mediaInfo?: {
+            video?: {
+              watermarkVideoUrl?: string;
+              watermarkCoverUrl?: string;
+              caption?: string;
+            };
+            userInfo?: { videoUserName?: string };
+          };
+        };
+      };
+    };
+    const video = parsed.props?.pageProps?.mediaInfo?.video;
+    const user = parsed.props?.pageProps?.mediaInfo?.userInfo;
+    const videoUrl = typeof video?.watermarkVideoUrl === "string" ? video.watermarkVideoUrl : "";
+    const cover = typeof video?.watermarkCoverUrl === "string" ? video.watermarkCoverUrl : "";
+    const caption = typeof video?.caption === "string" ? video.caption : "";
+    if (!videoUrl && !cover && !caption) return null;
+    const ogImage = metaContent(html, ["og:image"]) ?? "";
+    const imageUrls = [cover, ogImage].filter((url) => url.startsWith("https://"));
+    return {
+      platform: "shopee",
+      name: nameFromVideoCaption(caption || ogImage),
+      priceText: "",
+      priceValue: null,
+      currency: "THB",
+      imageUrls: [...new Set(imageUrls)].slice(0, 4),
+      videoUrls: videoUrl.startsWith("https://") ? [videoUrl] : [],
+      shopName: prettyShopName(user?.videoUserName ?? "") || "Shopee Video",
+      productUrl: fallbackUrl,
+      affiliateUrl: null,
+      productId: null,
+      shopId: null,
+      description: caption.slice(0, 400),
+      source: "page",
+      sample: false,
+    };
+  } catch {
+    return null;
+  }
+}
+
 function productFromHtml(
   html: string,
   fallbackUrl: string,
@@ -357,7 +423,10 @@ async function productFromShopeeHtml(
       maxBytes: 1_500_000,
       headers: PAGE_HEADERS,
     });
-    return productFromHtml(got.buffer.toString("utf8"), got.url.toString(), ref);
+    const html = got.buffer.toString("utf8");
+    const fromVideo = productFromShopeeVideo(html, got.url.toString());
+    if (fromVideo?.name) return fromVideo;
+    return productFromHtml(html, got.url.toString(), ref);
   } catch {
     return null;
   }

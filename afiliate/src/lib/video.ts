@@ -122,33 +122,56 @@ export async function renderVerticalClip(opts: {
   );
 
   const imageRels = (opts.images ?? []).slice(0, 3).map((file) => assertRel(file, "ชื่อไฟล์รูป"));
+  const videoRel = (opts.videos ?? []).map((file) => assertRel(file, "ชื่อไฟล์วิดีโอ"))[0] ?? null;
   const audioRel = opts.audioPath ? assertRel(opts.audioPath, "ชื่อไฟล์เสียง") : null;
   const pal = paletteFor(opts.product);
-  const args = [
-    "-y",
-    "-f",
-    "lavfi",
-    "-t",
-    duration.toFixed(2),
-    "-i",
-    `gradients=s=720x1280:c0=${pal.c0}:c1=${pal.c1}:speed=0.07:nb_colors=2`,
-  ];
-  for (const rel of imageRels) {
-    args.push("-loop", "1", "-t", duration.toFixed(2), "-i", rel);
+  const args = ["-y"];
+  if (videoRel) {
+    args.push("-stream_loop", "-1", "-i", videoRel);
+  } else {
+    args.push(
+      "-f",
+      "lavfi",
+      "-t",
+      duration.toFixed(2),
+      "-i",
+      `gradients=s=720x1280:c0=${pal.c0}:c1=${pal.c1}:speed=0.07:nb_colors=2`,
+    );
+    for (const rel of imageRels) {
+      args.push("-loop", "1", "-t", duration.toFixed(2), "-i", rel);
+    }
   }
   if (audioRel) {
     args.push("-i", audioRel);
   } else {
     args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   }
-  const audioIndex = 1 + imageRels.length;
+  const audioIndex = videoRel ? 1 : 1 + imageRels.length;
+  const vf = videoRel
+    ? [
+        "scale=720:1280:force_original_aspect_ratio=increase",
+        "crop=720:1280",
+        `drawbox=x=0:y=0:w=720:h=16:color=${pal.accent}@1:t=fill`,
+        `drawbox=x=0:y=1264:w=720:h=16:color=${pal.accent}@1:t=fill`,
+        "setsar=1",
+        "fps=30",
+        "format=yuv420p",
+        "subtitles=captions.ass:fontsdir=fonts",
+      ].join(",")
+    : null;
   args.push(
-    "-filter_complex",
-    buildFilter({ product: opts.product, duration, imageCount: imageRels.length }),
-    "-map",
-    "[vout]",
-    "-map",
-    `${audioIndex}:a:0`,
+    ...(vf
+      ? ["-map", "0:v:0", "-map", `${audioIndex}:a:0`, "-vf", vf]
+      : [
+          "-filter_complex",
+          buildFilter({ product: opts.product, duration, imageCount: imageRels.length }),
+          "-map",
+          "[vout]",
+          "-map",
+          `${audioIndex}:a:0`,
+        ]),
+  );
+  args.push(
     "-af",
     "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
     "-c:v",
