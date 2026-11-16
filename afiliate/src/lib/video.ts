@@ -70,7 +70,7 @@ async function writeGradientStill(
   );
 }
 
-/** Original drama stills from product facts. At most one listing photo as a hero prop, never a slideshow. */
+/** Original drama stills from product facts. Listing photos keep their shape/colors; never a square crop or slideshow. */
 async function generateFactScenes(
   bin: string,
   workDir: string,
@@ -87,18 +87,32 @@ async function generateFactScenes(
       [
         "-y",
         "-i",
-        "scene1.png",
-        "-i",
         heroRel,
-        "-filter_complex",
-        "[1:v]scale=520:520:force_original_aspect_ratio=increase,crop=520:520,setsar=1[h];[0:v][h]overlay=100:360",
+        "-vf",
+        "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,eq=saturation=1.05:contrast=1.04",
         "-frames:v",
         "1",
-        "scene1h.png",
+        "scene1p.png",
       ],
       { cwd: workDir, timeout: 20_000, maxBuffer: 4_000_000 },
     );
-    return ["scene0.png", "scene1h.png", "scene2.png"];
+    await execFileAsync(
+      bin,
+      [
+        "-y",
+        "-i",
+        "scene2.png",
+        "-i",
+        heroRel,
+        "-filter_complex",
+        "[1:v]scale=580:980:force_original_aspect_ratio=decrease,setsar=1[h];[0:v][h]overlay=(W-w)/2:(H-h)/2-24",
+        "-frames:v",
+        "1",
+        "scene2h.png",
+      ],
+      { cwd: workDir, timeout: 20_000, maxBuffer: 4_000_000 },
+    );
+    return ["scene0.png", "scene1p.png", "scene2h.png"];
   }
   return ["scene0.png", "scene1.png", "scene2.png"];
 }
