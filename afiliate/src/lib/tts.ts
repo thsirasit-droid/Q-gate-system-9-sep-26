@@ -51,24 +51,45 @@ function assertTempPath(filePath: string): void {
   }
 }
 
-async function espeakSpeak(text: string, wavPath: string): Promise<Buffer> {
-  assertTempPath(wavPath);
-  const textPath = path.join(path.dirname(wavPath), "speech.txt");
-  assertTempPath(textPath);
-  await writeFile(textPath, text, "utf8");
-  // Amplitude 200 is espeak-ng's maximum; the mix still goes through loudifyVoiceover.
-  await execFileAsync("espeak-ng", ["-v", "th", "-s", "140", "-a", "200", "-w", wavPath, "-f", textPath], {
-    timeout: 20_000,
-    maxBuffer: 2_000_000,
-  });
-  const wav = await readFile(wavPath);
-  if (wav.length < 1000) {
-    throw new Error("espeak-ng ไม่ได้สร้างไฟล์เสียง");
+function thaiTtsScript(): string {
+  const resolved = path.resolve(process.cwd(), "scripts/thai-tts.py");
+  const root = path.resolve(process.cwd(), "scripts");
+  if (!resolved.startsWith(`${root}${path.sep}`) || path.basename(resolved) !== "thai-tts.py") {
+    throw new Error("สคริปต์เสียงไทยไม่ถูกต้อง");
   }
-  return wav;
+  return resolved;
 }
 
-/** Resample to 48 kHz stereo and raise speech so the preview is actually audible. */
+async function neuralSpeak(text: string, mp3Path: string): Promise<Buffer> {
+  assertTempPath(mp3Path);
+  const textPath = path.join(path.dirname(mp3Path), "speech.txt");
+  assertTempPath(textPath);
+  await writeFile(textPath, text, "utf8");
+  try {
+    await execFileAsync("python3", [thaiTtsScript(), "--text-file", textPath, "--out", mp3Path], {
+      timeout: 60_000,
+      maxBuffer: 4_000_000,
+      env: {
+        ...process.env,
+        HOME: process.env.HOME ?? os.homedir(),
+        PYTHONUNBUFFERED: "1",
+        PYTHONIOENCODING: "utf-8",
+        PATH: process.env.PATH ?? "/usr/bin:/bin",
+      },
+    });
+  } catch (error) {
+    const err = error as { stderr?: string; stdout?: string; message?: string };
+    const detail = `${err.stderr ?? ""} ${err.stdout ?? ""} ${err.message ?? ""}`.trim().replace(/\s+/g, " ").slice(0, 400);
+    throw new Error(detail || "พากย์เสียงไทยไม่สำเร็จ");
+  }
+  const mp3 = await readFile(mp3Path);
+  if (mp3.length < 1000) {
+    throw new Error("ระบบพากย์ไทยไม่ได้สร้างไฟล์เสียง");
+  }
+  return mp3;
+}
+
+/** Resample to 48 kHz stereo and raise speech so the file itself is loud. */
 export async function loudifyVoiceover(inputPath: string, outputPath: string): Promise<void> {
   assertTempPath(inputPath);
   assertTempPath(outputPath);
@@ -79,7 +100,7 @@ export async function loudifyVoiceover(inputPath: string, outputPath: string): P
       "-i",
       inputPath,
       "-af",
-      "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,dynaudnorm=f=75:g=30:p=0.95,volume=6,alimiter=limit=0.97",
+      "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,dynaudnorm=f=75:g=20:p=0.9,volume=3,alimiter=limit=0.97",
       "-ar",
       "48000",
       "-ac",
@@ -130,17 +151,17 @@ export async function speakThai(text: string, wavPath: string): Promise<SpeechRe
       await writeFile(rawPath, audio);
       return await finishLoud(rawPath, wavPath, "google", "พากย์ด้วย Google เสียงไทย");
     } catch {
-      // fall through to espeak
+      // fall through to neural Thai (no key)
     }
   }
   try {
-    const rawPath = path.join(dir, "voice-raw.wav");
-    await espeakSpeak(clipped, rawPath);
+    const rawPath = path.join(dir, "voice-raw.mp3");
+    await neuralSpeak(clipped, rawPath);
     return await finishLoud(
       rawPath,
       wavPath,
-      "espeak",
-      "พากย์สำรองด้วย espeak-ng (เสียงหุ่นยนต์กว่า Google) เพราะยังไม่มีคีย์ Google TTS",
+      "neural",
+      "พากย์ไทยด้วยเสียง Neural (Microsoft Premwadee) ไม่ใช้ espeak",
     );
   } catch (error) {
     const detail = error instanceof Error ? error.message : "unknown";

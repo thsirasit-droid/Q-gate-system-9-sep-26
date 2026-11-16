@@ -12,7 +12,7 @@ export type JobStatus =
   | "needs_tap"
   | "failed";
 
-export type VoiceMode = "google" | "espeak" | "captions" | "none";
+export type VoiceMode = "google" | "neural" | "espeak" | "captions" | "none";
 
 export type ProductInfo = {
   platform: Platform;

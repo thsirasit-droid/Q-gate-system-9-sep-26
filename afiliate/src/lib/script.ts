@@ -1,9 +1,9 @@
 import type { ProductInfo } from "./types";
 
 function clipName(name: string, max = 42): string {
-  const clean = name.replace(/\s+/g, " ").trim();
+  const clean = name.replace(/\s+/g, " ").replace(/…/g, " ").trim();
   if (clean.length <= max) return clean;
-  return `${clean.slice(0, max - 1)}…`;
+  return clean.slice(0, max).trim();
 }
 
 function escapeAss(text: string): string {
