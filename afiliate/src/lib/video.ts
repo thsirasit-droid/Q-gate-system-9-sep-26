@@ -45,117 +45,40 @@ function assertRel(file: string, kind: string): string {
   return rel;
 }
 
-function zoompanFilter(index: number, frames: number): string {
-  const n = Math.max(30, frames);
-  const modes = [
-    `z='min(1.05+0.0012*on,1.2)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'`,
-    `z='1.14':x='(iw-iw/zoom)*on/${n}':y='ih/2-(ih/zoom/2)'`,
-    `z='min(1.18-0.0009*on,1.18)':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*on/${n}'`,
-    `z='1.12':x='iw/2-(iw/zoom/2)':y='(ih-ih/zoom)*(1-on/${n})'`,
-  ];
-  return `scale=960:1708:force_original_aspect_ratio=increase,crop=960:1708,zoompan=${modes[index % modes.length]}:d=${n}:s=720x1280:fps=30,setsar=1,format=yuv420p`;
+function paletteFor(product: ProductInfo): { c0: string; c1: string; card: string; accent: string } {
+  const hay = `${product.name} ${product.description}`.toLowerCase();
+  if (/ที่นอน|หมอน|ยางพารา|mattress|bed|lotus/.test(hay)) {
+    return { c0: "0x16110C", c1: "0xD4AF37", card: "0x2A2118", accent: "0xD4AF37" };
+  }
+  if (/เซรั่ม|ครีม|ผิว|serum|skin/.test(hay)) {
+    return { c0: "0x1A1014", c1: "0xE8A0B4", card: "0x2C1A22", accent: "0xE8A0B4" };
+  }
+  return { c0: "0x101820", c1: "0x4DA3FF", card: "0x182430", accent: "0x4DA3FF" };
 }
 
-async function renderKenBurnsStack(
-  bin: string,
-  workDir: string,
-  images: string[],
-  duration: number,
-): Promise<string> {
-  const count = Math.max(1, images.length);
-  const per = duration / count;
-  const parts: string[] = [];
-  for (const [index, image] of images.entries()) {
-    const rel = assertRel(image, "ชื่อไฟล์รูป");
-    const frames = Math.max(45, Math.round(per * 30));
-    const outRel = `motion${index}.mp4`;
-    await execFileAsync(
-      bin,
-      [
-        "-y",
-        "-loop",
-        "1",
-        "-i",
-        rel,
-        "-vf",
-        zoompanFilter(index, frames),
-        "-t",
-        per.toFixed(3),
-        "-an",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        outRel,
-      ],
-      { cwd: workDir, timeout: 60_000, maxBuffer: 4_000_000 },
-    );
-    parts.push(outRel);
-  }
-  const listPath = path.join(workDir, "motion.txt");
-  await writeFile(listPath, `${parts.map((rel) => `file '${rel}'`).join("\n")}\n`, "utf8");
-  if (parts.length === 1) return parts[0];
-  await execFileAsync(
-    bin,
-    ["-y", "-f", "concat", "-safe", "0", "-i", "motion.txt", "-c", "copy", "motion-stack.mp4"],
-    { cwd: workDir, timeout: 30_000, maxBuffer: 4_000_000 },
-  );
-  return "motion-stack.mp4";
-}
-
-async function mixVoiceAndSubs(opts: {
-  bin: string;
-  workDir: string;
-  videoRel: string;
-  audioRel: string | null;
-  duration: number;
-  loopVideo: boolean;
-}): Promise<void> {
-  const vf =
-    "scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1,fps=30,subtitles=captions.ass:fontsdir=fonts";
-  const args = ["-y"];
-  if (opts.loopVideo) args.push("-stream_loop", "-1");
-  args.push("-i", opts.videoRel);
-  if (opts.audioRel) {
-    args.push("-i", opts.audioRel);
-  } else {
-    args.push("-f", "lavfi", "-t", opts.duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
-  }
-  args.push(
-    "-map",
-    "0:v:0",
-    "-map",
-    "1:a:0",
-    "-vf",
-    vf,
-    "-af",
-    "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
-    "-c:v",
-    "libx264",
-    "-pix_fmt",
-    "yuv420p",
-    "-c:a",
-    "aac",
-    "-profile:a",
-    "aac_low",
-    "-ar",
-    "48000",
-    "-ac",
-    "2",
-    "-b:a",
-    "192k",
-    "-t",
-    opts.duration.toFixed(2),
-    "-movflags",
-    "+faststart",
-    "clip.mp4",
-  );
-  await execFileAsync(opts.bin, args, { cwd: opts.workDir, timeout: 90_000, maxBuffer: 8_000_000 });
+function graphicsFilter(product: ProductInfo, duration: number): string {
+  const p = paletteFor(product);
+  const a = (duration * 0.34).toFixed(2);
+  const b = (duration * 0.68).toFixed(2);
+  return [
+    `hue=h='18*sin(2*PI*t/5)':s=1.05`,
+    `drawbox=x=0:y=0:w=720:h=18:color=${p.accent}@1:t=fill`,
+    `drawbox=x=0:y=1262:w=720:h=18:color=${p.accent}@1:t=fill`,
+    `drawbox=x=70:y=250:w=580:h=8:color=${p.accent}@0.95:t=fill:enable='between(t\\,0\\,${a})'`,
+    `drawbox=x=90:y=590:w=540:h=90:color=${p.card}@0.88:t=fill:enable='between(t\\,0\\,${a})'`,
+    `drawbox=x=90:y=400:w=540:h=280:color=${p.accent}@0.94:t=fill:enable='between(t\\,${a}\\,${b})'`,
+    `drawbox=x=70:y=340:w=580:h=400:color=${p.card}@0.9:t=fill:enable='gte(t\\,${b})'`,
+    `drawbox=x=70:y=340:w=580:h=12:color=${p.accent}@1:t=fill:enable='gte(t\\,${b})'`,
+    `setsar=1`,
+    `fps=30`,
+    `format=yuv420p`,
+    `subtitles=captions.ass:fontsdir=fonts`,
+  ].join(",");
 }
 
 export async function renderVerticalClip(opts: {
   workDir: string;
-  images: string[];
+  images?: string[];
   videos?: string[];
   audioPath: string | null;
   product: ProductInfo;
@@ -179,40 +102,54 @@ export async function renderVerticalClip(opts: {
   );
 
   const audioRel = opts.audioPath ? assertRel(opts.audioPath, "ชื่อไฟล์เสียง") : null;
-  const seller = (opts.videos ?? []).find((file) => /^[a-zA-Z0-9._-]+$/.test(path.basename(file)));
-  let made = false;
-  if (seller) {
-    try {
-      await mixVoiceAndSubs({
-        bin,
-        workDir: opts.workDir,
-        videoRel: path.basename(seller),
-        audioRel,
-        duration,
-        loopVideo: true,
-      });
-      made = true;
-    } catch {
-      // Ken Burns stills if the seller file will not decode
-    }
+  const pal = paletteFor(opts.product);
+  const args = [
+    "-y",
+    "-f",
+    "lavfi",
+    "-t",
+    duration.toFixed(2),
+    "-i",
+    `gradients=s=720x1280:c0=${pal.c0}:c1=${pal.c1}:speed=0.07:nb_colors=2`,
+  ];
+  if (audioRel) {
+    args.push("-i", audioRel);
+  } else {
+    args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   }
-  if (!made) {
-    if (opts.images.length === 0) throw new Error("ไม่มีรูปสินค้าให้ทำคลิป");
-    const stackRel = await renderKenBurnsStack(bin, opts.workDir, opts.images, duration);
-    await mixVoiceAndSubs({
-      bin,
-      workDir: opts.workDir,
-      videoRel: stackRel,
-      audioRel,
-      duration,
-      loopVideo: false,
-    });
-  }
+  args.push(
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-vf",
+    graphicsFilter(opts.product, duration),
+    "-af",
+    "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    "-c:a",
+    "aac",
+    "-profile:a",
+    "aac_low",
+    "-ar",
+    "48000",
+    "-ac",
+    "2",
+    "-b:a",
+    "192k",
+    "-t",
+    duration.toFixed(2),
+    "-movflags",
+    "+faststart",
+    "clip.mp4",
+  );
+  await execFileAsync(bin, args, { cwd: opts.workDir, timeout: 90_000, maxBuffer: 8_000_000 });
 
   const { readFile } = await import("node:fs/promises");
-  const outPath = path.join(opts.workDir, "clip.mp4");
-
-  const video = await readFile(outPath);
+  const video = await readFile(path.join(opts.workDir, "clip.mp4"));
   if (video.length > 12_000_000) throw new Error("คลิปใหญ่เกินไป");
   return { video, durationSec: duration };
 }

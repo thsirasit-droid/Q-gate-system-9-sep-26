@@ -6,6 +6,24 @@ function clipName(name: string, max = 42): string {
   return clean.slice(0, max).trim();
 }
 
+function wrapLines(text: string, width: number, maxLines: number): string {
+  const clean = text.replace(/\s+/g, " ").replace(/…/g, " ").trim();
+  if (!clean) return "";
+  const lines: string[] = [];
+  let rest = clean;
+  while (rest && lines.length < maxLines) {
+    if (rest.length <= width) {
+      lines.push(rest);
+      break;
+    }
+    let cut = rest.lastIndexOf(" ", width);
+    if (cut < Math.floor(width / 2)) cut = width;
+    lines.push(rest.slice(0, cut).trim());
+    rest = rest.slice(cut).trim();
+  }
+  return lines.join("\n");
+}
+
 function escapeAss(text: string): string {
   return text.replace(/[{}\\]/g, " ").replace(/\n/g, "\\N").replace(/,/g, " ");
 }
@@ -22,9 +40,10 @@ function formatAssTime(seconds: number): string {
 export function writeThaiCopy(product: ProductInfo): { script: string; caption: string; sentences: string[] } {
   const name = clipName(product.name);
   const price = product.priceText ? `${product.priceText} บาท` : "ราคาน่าลอง";
+  const shop = product.shopName ? ` จากร้าน ${product.shopName}` : "";
   const sentences = [
     `วันนี้ขอแนะนำ ${name}`,
-    `ราคาอยู่ที่ ${price} ของจริงจากหน้าร้าน ไม่ได้แต่งรูป`,
+    `ราคาอยู่ที่ ${price}${shop}`,
     "สั่งผ่านลิงก์ในคลิปได้เลยนะคะ มีค่าคอมมิชชันหากสั่งผ่านลิงก์นี้",
   ];
   const script = sentences.join(" ").slice(0, 400);
@@ -57,15 +76,34 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Caption,Noto Sans Thai,38,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,3,0,2,36,36,96,1
-Style: Banner,Noto Sans Thai,30,&H00FFFFFF,&H000000FF,&H002B3AC2,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,8,24,24,36,1
+Style: Caption,Noto Sans Thai,36,&H00FFFFFF,&H000000FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,3,0,2,36,36,88,1
+Style: Banner,Noto Sans Thai,28,&H00FFFFFF,&H000000FF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,8,24,24,28,1
+Style: Title,Noto Sans Thai,48,&H00FFFFFF,&H000000FF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,3,0,5,24,24,0,1
+Style: Price,Noto Sans Thai,76,&H000C1116,&H000000FF,&H00FFFFFF,&H00000000,-1,0,0,0,100,100,0,0,1,0,0,5,24,24,0,1
+Style: Gold,Noto Sans Thai,56,&H0037AFD4,&H000000FF,&H00101010,&H00000000,-1,0,0,0,100,100,0,0,1,2,0,5,24,24,0,1
+Style: Soft,Noto Sans Thai,30,&H00B5D5E8,&H000000FF,&H00101010,&H00000000,0,0,0,0,100,100,0,0,1,2,0,5,24,24,0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
-  const banner = `${opts.product.priceText ? `฿${opts.product.priceText}` : "สินค้าแนะนำ"}  ${clipName(opts.product.name, 28)}`;
+  const a = opts.durationSec * 0.34;
+  const b = opts.durationSec * 0.68;
+  const title = wrapLines(opts.product.name, 20, 3) || "สินค้าแนะนำ";
+  const shop = escapeAss(opts.product.shopName || "Shopee");
+  const price = escapeAss(opts.product.priceText ? `฿${opts.product.priceText}` : "ราคาน่าลอง");
+  const fact = wrapLines(opts.product.description || opts.product.shopName || "", 22, 2);
+  const banner = `${opts.product.priceText ? `฿${opts.product.priceText}` : "สินค้าแนะนำ"}  ${clipName(opts.product.name, 22)}`;
   const events = [
     `Dialogue: 0,${formatAssTime(0)},${formatAssTime(opts.durationSec)},Banner,,0,0,0,,${escapeAss(banner)}`,
+    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Title,,0,0,0,,{\\move(360,340,360,380)}${escapeAss(title)}`,
+    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Soft,,0,0,0,,{\\pos(360,540)}${shop}`,
+    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Soft,,0,0,0,,{\\pos(360,620)}${escapeAss(fact)}`,
+    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Price,,0,0,0,,{\\move(360,470,360,510)\\fad(120,80)}${price}`,
+    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Soft,,0,0,0,,{\\pos(360,600)}บาท`,
+    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Soft,,0,0,0,,{\\pos(360,680)}${shop}`,
+    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Title,,0,0,0,,{\\pos(360,430)\\fad(100,80)}สั่งผ่านลิงก์ในคลิป`,
+    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Gold,,0,0,0,,{\\pos(360,530)}${price}`,
+    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Soft,,0,0,0,,{\\pos(360,640)}${escapeAss(title)}`,
   ];
   const weights = opts.sentences.map((s) => Math.max(8, s.length));
   const total = weights.reduce((a, b) => a + b, 0) || 1;
