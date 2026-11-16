@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { asBuffer, sql } from "./db";
-import { downloadProductImage, downloadProductVideo, resolveProduct, sampleProduct } from "./product";
+import { downloadProductImage, resolveProduct, sampleProduct } from "./product";
 import { writeThaiCopy } from "./script";
 import { sanitizeSpeech } from "./text";
 import { speakThai } from "./tts";
@@ -234,14 +234,6 @@ export async function processJob(id: string, owner: string): Promise<void> {
       await writeFile(file, image.data);
       imagePaths.push(file);
     }
-    const videoPaths: string[] = [];
-    for (const url of (product.videoUrls ?? []).slice(0, 1)) {
-      const downloaded = await downloadProductVideo(url);
-      if (!downloaded) continue;
-      const file = path.join(workDir, `seller${videoPaths.length}.mp4`);
-      await writeFile(file, downloaded.data);
-      videoPaths.push(file);
-    }
     await setJob(id, { status: "speaking" });
     const wavPath = path.join(workDir, "voice.wav");
     const speech = await speakThai(copy.script, wavPath);
@@ -257,8 +249,7 @@ export async function processJob(id: string, owner: string): Promise<void> {
     await setJob(id, { status: "rendering" });
     const clip = await renderVerticalClip({
       workDir,
-      images: imagePaths,
-      videos: videoPaths,
+      images: imagePaths.slice(0, 1),
       audioPath,
       product,
       sentences: copy.sentences,
@@ -322,14 +313,6 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
         if (imagePaths.length >= 3) break;
       }
     }
-    const videoPaths: string[] = [];
-    for (const url of (product.videoUrls ?? []).slice(0, 1)) {
-      const downloaded = await downloadProductVideo(url);
-      if (!downloaded) continue;
-      const file = path.join(workDir, `seller${videoPaths.length}.mp4`);
-      await writeFile(file, downloaded.data);
-      videoPaths.push(file);
-    }
     await setJob(id, { status: "speaking" });
     const wavPath = path.join(workDir, "voice.wav");
     const speech = await speakThai(nextScript, wavPath);
@@ -342,8 +325,7 @@ export async function regenerateJob(id: string, owner: string, scriptText?: stri
     await setJob(id, { status: "rendering" });
     const clip = await renderVerticalClip({
       workDir,
-      images: imagePaths,
-      videos: videoPaths,
+      images: imagePaths.slice(0, 1),
       audioPath,
       product,
       sentences: copy.sentences,

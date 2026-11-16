@@ -45,61 +45,117 @@ function assertRel(file: string, kind: string): string {
   return rel;
 }
 
-function paletteFor(product: ProductInfo): { c0: string; c1: string; card: string; accent: string } {
+function paletteFor(product: ProductInfo): { c0: string; c1: string; c2: string } {
   const hay = `${product.name} ${product.description}`.toLowerCase();
   if (/ที่นอน|หมอน|ยางพารา|mattress|bed|lotus/.test(hay)) {
-    return { c0: "0x16110C", c1: "0xD4AF37", card: "0x2A2118", accent: "0xD4AF37" };
+    return { c0: "0x120E0A", c1: "0x3A2A14", c2: "0xD4AF37" };
   }
-  if (/เซรั่ม|ครีม|ผิว|serum|skin/.test(hay)) {
-    return { c0: "0x1A1014", c1: "0xE8A0B4", card: "0x2C1A22", accent: "0xE8A0B4" };
+  if (/เซรั่ม|ครีม|ผิว|skin|serum|whitening|vitaminc|clearnose|สกิน/.test(hay)) {
+    return { c0: "0x1A1014", c1: "0x4A2030", c2: "0xE8A0B4" };
   }
-  return { c0: "0x101820", c1: "0x4DA3FF", card: "0x182430", accent: "0x4DA3FF" };
+  return { c0: "0x101820", c1: "0x1C3048", c2: "0x4DA3FF" };
 }
 
-function productMotion(label: string, index: number): string {
-  const xShift = index % 2 === 0 ? "28*sin(2*PI*t/5)" : "28*cos(2*PI*t/6)";
-  const yShift = index % 2 === 0 ? "18*cos(2*PI*t/7)" : "18*sin(2*PI*t/4)";
-  return `[${label}]scale=900:900:force_original_aspect_ratio=increase,crop=640:640:x='(in_w-640)/2+${xShift}':y='(in_h-640)/2+${yShift}',setsar=1[p${index}]`;
-}
-
-function buildFilter(opts: { product: ProductInfo; duration: number; imageCount: number }): string {
-  const p = paletteFor(opts.product);
-  const a = (opts.duration * 0.34).toFixed(2);
-  const b = (opts.duration * 0.68).toFixed(2);
-  const chains: string[] = [
-    `[0:v]hue=h='12*sin(2*PI*t/5)':s=1.04,drawbox=x=0:y=0:w=720:h=16:color=${p.accent}@1:t=fill,drawbox=x=0:y=1264:w=720:h=16:color=${p.accent}@1:t=fill,drawbox=x=36:y=196:w=648:h=648:color=${p.accent}@1:t=6[bg]`,
-  ];
-  if (opts.imageCount === 0) {
-    chains.push(
-      `[bg]drawbox=x=90:y=880:w=540:h=100:color=${p.accent}@0.94:t=fill,fps=30,format=yuv420p,subtitles=captions.ass:fontsdir=fonts[vout]`,
-    );
-    return chains.join(";");
-  }
-  for (let i = 0; i < opts.imageCount; i += 1) {
-    chains.push(productMotion(`${i + 1}:v`, i));
-  }
-  const windows =
-    opts.imageCount === 1
-      ? ["gte(t\\,0)"]
-      : opts.imageCount === 2
-        ? [`lt(t\\,${((opts.duration * 0.5).toFixed(2))})`, `gte(t\\,${((opts.duration * 0.5).toFixed(2))})`]
-        : [`between(t\\,0\\,${a})`, `between(t\\,${a}\\,${b})`, `gte(t\\,${b})`];
-  let prev = "bg";
-  for (let i = 0; i < opts.imageCount; i += 1) {
-    const next = i === opts.imageCount - 1 ? "over" : `s${i}`;
-    chains.push(`[${prev}][p${i}]overlay=40:200:enable='${windows[i]}'[${next}]`);
-    prev = next;
-  }
-  chains.push(
-    `[over]drawbox=x=140:y=860:w=440:h=96:color=${p.accent}@0.94:t=fill:enable='between(t\\,${a}\\,${b})',drawbox=x=90:y=860:w=540:h=96:color=${p.card}@0.92:t=fill:enable='gte(t\\,${b})',fps=30,format=yuv420p,subtitles=captions.ass:fontsdir=fonts[vout]`,
+async function writeGradientStill(
+  bin: string,
+  workDir: string,
+  outRel: string,
+  c0: string,
+  c1: string,
+): Promise<void> {
+  await execFileAsync(
+    bin,
+    ["-y", "-f", "lavfi", "-i", `gradients=s=720x1280:c0=${c0}:c1=${c1}:nb_colors=2`, "-frames:v", "1", outRel],
+    { cwd: workDir, timeout: 20_000, maxBuffer: 2_000_000 },
   );
-  return chains.join(";");
+}
+
+/** Original drama stills from product facts. At most one listing photo as a hero prop, never a slideshow. */
+async function generateFactScenes(
+  bin: string,
+  workDir: string,
+  product: ProductInfo,
+  heroRel: string | null,
+): Promise<string[]> {
+  const pal = paletteFor(product);
+  await writeGradientStill(bin, workDir, "scene0.png", pal.c0, pal.c1);
+  await writeGradientStill(bin, workDir, "scene1.png", pal.c1, pal.c2);
+  await writeGradientStill(bin, workDir, "scene2.png", pal.c2, pal.c0);
+  if (heroRel) {
+    await execFileAsync(
+      bin,
+      [
+        "-y",
+        "-i",
+        "scene1.png",
+        "-i",
+        heroRel,
+        "-filter_complex",
+        "[1:v]scale=520:520:force_original_aspect_ratio=increase,crop=520:520,setsar=1[h];[0:v][h]overlay=100:360",
+        "-frames:v",
+        "1",
+        "scene1h.png",
+      ],
+      { cwd: workDir, timeout: 20_000, maxBuffer: 4_000_000 },
+    );
+    return ["scene0.png", "scene1h.png", "scene2.png"];
+  }
+  return ["scene0.png", "scene1.png", "scene2.png"];
+}
+
+async function imageToVideo(
+  bin: string,
+  workDir: string,
+  stills: string[],
+  duration: number,
+): Promise<string> {
+  const count = Math.max(1, stills.length);
+  const per = duration / count;
+  const parts: string[] = [];
+  for (const [index, still] of stills.entries()) {
+    const rel = assertRel(still, "ชื่อไฟล์ฉาก");
+    const frames = Math.max(48, Math.round(per * 30));
+    const zoom =
+      index % 2 === 0 ? `min(1.04+0.001*on,1.14)` : `min(1.14-0.0007*on,1.14)`;
+    const outRel = `beat${index}.mp4`;
+    await execFileAsync(
+      bin,
+      [
+        "-y",
+        "-loop",
+        "1",
+        "-i",
+        rel,
+        "-vf",
+        `scale=960:1708:force_original_aspect_ratio=increase,crop=960:1708,zoompan=z='${zoom}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=720x1280:fps=30,setsar=1,format=yuv420p`,
+        "-t",
+        per.toFixed(3),
+        "-an",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        outRel,
+      ],
+      { cwd: workDir, timeout: 60_000, maxBuffer: 4_000_000 },
+    );
+    parts.push(outRel);
+  }
+  await writeFile(path.join(workDir, "beats.txt"), `${parts.map((rel) => `file '${rel}'`).join("\n")}\n`, "utf8");
+  if (parts.length === 1) return parts[0];
+  await execFileAsync(bin, ["-y", "-f", "concat", "-safe", "0", "-i", "beats.txt", "-c", "copy", "beats.mp4"], {
+    cwd: workDir,
+    timeout: 30_000,
+    maxBuffer: 4_000_000,
+  });
+  return "beats.mp4";
 }
 
 export async function renderVerticalClip(opts: {
   workDir: string;
   images?: string[];
   videos?: string[];
+  sceneStills?: string[];
   audioPath: string | null;
   product: ProductInfo;
   sentences: string[];
@@ -121,57 +177,24 @@ export async function renderVerticalClip(opts: {
     "utf8",
   );
 
-  const imageRels = (opts.images ?? []).slice(0, 3).map((file) => assertRel(file, "ชื่อไฟล์รูป"));
-  const videoRel = (opts.videos ?? []).map((file) => assertRel(file, "ชื่อไฟล์วิดีโอ"))[0] ?? null;
   const audioRel = opts.audioPath ? assertRel(opts.audioPath, "ชื่อไฟล์เสียง") : null;
+  const sceneStills = (opts.sceneStills ?? []).map((file) => assertRel(file, "ชื่อไฟล์ฉาก"));
+  const hero = (opts.images ?? []).slice(0, 1).map((file) => assertRel(file, "ชื่อไฟล์รูป"))[0] ?? null;
+  const stills =
+    sceneStills.length > 0 ? sceneStills : await generateFactScenes(bin, opts.workDir, opts.product, hero);
+  const stackRel = await imageToVideo(bin, opts.workDir, stills, duration);
+
   const pal = paletteFor(opts.product);
-  const args = ["-y"];
-  if (videoRel) {
-    args.push("-stream_loop", "-1", "-i", videoRel);
-  } else {
-    args.push(
-      "-f",
-      "lavfi",
-      "-t",
-      duration.toFixed(2),
-      "-i",
-      `gradients=s=720x1280:c0=${pal.c0}:c1=${pal.c1}:speed=0.07:nb_colors=2`,
-    );
-    for (const rel of imageRels) {
-      args.push("-loop", "1", "-t", duration.toFixed(2), "-i", rel);
-    }
-  }
-  if (audioRel) {
-    args.push("-i", audioRel);
-  } else {
-    args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
-  }
-  const audioIndex = videoRel ? 1 : 1 + imageRels.length;
-  const vf = videoRel
-    ? [
-        "scale=720:1280:force_original_aspect_ratio=increase",
-        "crop=720:1280",
-        `drawbox=x=0:y=0:w=720:h=16:color=${pal.accent}@1:t=fill`,
-        `drawbox=x=0:y=1264:w=720:h=16:color=${pal.accent}@1:t=fill`,
-        "setsar=1",
-        "fps=30",
-        "format=yuv420p",
-        "subtitles=captions.ass:fontsdir=fonts",
-      ].join(",")
-    : null;
+  const args = ["-y", "-i", stackRel];
+  if (audioRel) args.push("-i", audioRel);
+  else args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   args.push(
-    ...(vf
-      ? ["-map", "0:v:0", "-map", `${audioIndex}:a:0`, "-vf", vf]
-      : [
-          "-filter_complex",
-          buildFilter({ product: opts.product, duration, imageCount: imageRels.length }),
-          "-map",
-          "[vout]",
-          "-map",
-          `${audioIndex}:a:0`,
-        ]),
-  );
-  args.push(
+    "-map",
+    "0:v:0",
+    "-map",
+    "1:a:0",
+    "-vf",
+    `drawbox=x=0:y=0:w=720:h=14:color=${pal.c2}@1:t=fill,drawbox=x=0:y=1266:w=720:h=14:color=${pal.c2}@1:t=fill,setsar=1,fps=30,format=yuv420p,subtitles=captions.ass:fontsdir=fonts`,
     "-af",
     "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
     "-c:v",
