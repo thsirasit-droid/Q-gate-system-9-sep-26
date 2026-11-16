@@ -243,7 +243,7 @@ export default function JobPage() {
       {job.hasVideo ? (
         <a
           href={`/api/jobs/${job.id}/media?kind=video&download=1`}
-          className="mt-2 block w-full rounded-xl border border-sand bg-white py-3 text-center text-[16px] font-bold"
+          className="mt-3 block w-full rounded-xl bg-brick py-4 text-center text-[20px] font-bold text-white"
         >
           ดาวน์โหลดคลิป
         </a>
