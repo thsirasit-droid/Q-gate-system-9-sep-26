@@ -56,24 +56,44 @@ function paletteFor(product: ProductInfo): { c0: string; c1: string; card: strin
   return { c0: "0x101820", c1: "0x4DA3FF", card: "0x182430", accent: "0x4DA3FF" };
 }
 
-function graphicsFilter(product: ProductInfo, duration: number): string {
-  const p = paletteFor(product);
-  const a = (duration * 0.34).toFixed(2);
-  const b = (duration * 0.68).toFixed(2);
-  return [
-    `hue=h='18*sin(2*PI*t/5)':s=1.05`,
-    `drawbox=x=0:y=0:w=720:h=18:color=${p.accent}@1:t=fill`,
-    `drawbox=x=0:y=1262:w=720:h=18:color=${p.accent}@1:t=fill`,
-    `drawbox=x=70:y=250:w=580:h=8:color=${p.accent}@0.95:t=fill:enable='between(t\\,0\\,${a})'`,
-    `drawbox=x=90:y=590:w=540:h=90:color=${p.card}@0.88:t=fill:enable='between(t\\,0\\,${a})'`,
-    `drawbox=x=90:y=400:w=540:h=280:color=${p.accent}@0.94:t=fill:enable='between(t\\,${a}\\,${b})'`,
-    `drawbox=x=70:y=340:w=580:h=400:color=${p.card}@0.9:t=fill:enable='gte(t\\,${b})'`,
-    `drawbox=x=70:y=340:w=580:h=12:color=${p.accent}@1:t=fill:enable='gte(t\\,${b})'`,
-    `setsar=1`,
-    `fps=30`,
-    `format=yuv420p`,
-    `subtitles=captions.ass:fontsdir=fonts`,
-  ].join(",");
+function productMotion(label: string, index: number): string {
+  const xShift = index % 2 === 0 ? "28*sin(2*PI*t/5)" : "28*cos(2*PI*t/6)";
+  const yShift = index % 2 === 0 ? "18*cos(2*PI*t/7)" : "18*sin(2*PI*t/4)";
+  return `[${label}]scale=900:900:force_original_aspect_ratio=increase,crop=640:640:x='(in_w-640)/2+${xShift}':y='(in_h-640)/2+${yShift}',setsar=1[p${index}]`;
+}
+
+function buildFilter(opts: { product: ProductInfo; duration: number; imageCount: number }): string {
+  const p = paletteFor(opts.product);
+  const a = (opts.duration * 0.34).toFixed(2);
+  const b = (opts.duration * 0.68).toFixed(2);
+  const chains: string[] = [
+    `[0:v]hue=h='12*sin(2*PI*t/5)':s=1.04,drawbox=x=0:y=0:w=720:h=16:color=${p.accent}@1:t=fill,drawbox=x=0:y=1264:w=720:h=16:color=${p.accent}@1:t=fill,drawbox=x=36:y=196:w=648:h=648:color=${p.accent}@1:t=6[bg]`,
+  ];
+  if (opts.imageCount === 0) {
+    chains.push(
+      `[bg]drawbox=x=90:y=880:w=540:h=100:color=${p.accent}@0.94:t=fill,fps=30,format=yuv420p,subtitles=captions.ass:fontsdir=fonts[vout]`,
+    );
+    return chains.join(";");
+  }
+  for (let i = 0; i < opts.imageCount; i += 1) {
+    chains.push(productMotion(`${i + 1}:v`, i));
+  }
+  const windows =
+    opts.imageCount === 1
+      ? ["gte(t\\,0)"]
+      : opts.imageCount === 2
+        ? [`lt(t\\,${((opts.duration * 0.5).toFixed(2))})`, `gte(t\\,${((opts.duration * 0.5).toFixed(2))})`]
+        : [`between(t\\,0\\,${a})`, `between(t\\,${a}\\,${b})`, `gte(t\\,${b})`];
+  let prev = "bg";
+  for (let i = 0; i < opts.imageCount; i += 1) {
+    const next = i === opts.imageCount - 1 ? "over" : `s${i}`;
+    chains.push(`[${prev}][p${i}]overlay=40:200:enable='${windows[i]}'[${next}]`);
+    prev = next;
+  }
+  chains.push(
+    `[over]drawbox=x=140:y=860:w=440:h=96:color=${p.accent}@0.94:t=fill:enable='between(t\\,${a}\\,${b})',drawbox=x=90:y=860:w=540:h=96:color=${p.card}@0.92:t=fill:enable='gte(t\\,${b})',fps=30,format=yuv420p,subtitles=captions.ass:fontsdir=fonts[vout]`,
+  );
+  return chains.join(";");
 }
 
 export async function renderVerticalClip(opts: {
@@ -101,6 +121,7 @@ export async function renderVerticalClip(opts: {
     "utf8",
   );
 
+  const imageRels = (opts.images ?? []).slice(0, 3).map((file) => assertRel(file, "ชื่อไฟล์รูป"));
   const audioRel = opts.audioPath ? assertRel(opts.audioPath, "ชื่อไฟล์เสียง") : null;
   const pal = paletteFor(opts.product);
   const args = [
@@ -112,18 +133,22 @@ export async function renderVerticalClip(opts: {
     "-i",
     `gradients=s=720x1280:c0=${pal.c0}:c1=${pal.c1}:speed=0.07:nb_colors=2`,
   ];
+  for (const rel of imageRels) {
+    args.push("-loop", "1", "-t", duration.toFixed(2), "-i", rel);
+  }
   if (audioRel) {
     args.push("-i", audioRel);
   } else {
     args.push("-f", "lavfi", "-t", duration.toFixed(2), "-i", "anullsrc=channel_layout=stereo:sample_rate=48000");
   }
+  const audioIndex = 1 + imageRels.length;
   args.push(
+    "-filter_complex",
+    buildFilter({ product: opts.product, duration, imageCount: imageRels.length }),
     "-map",
-    "0:v:0",
+    "[vout]",
     "-map",
-    "1:a:0",
-    "-vf",
-    graphicsFilter(opts.product, duration),
+    `${audioIndex}:a:0`,
     "-af",
     "aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=2.5,apad",
     "-c:v",

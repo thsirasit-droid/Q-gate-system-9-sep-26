@@ -6,24 +6,6 @@ function clipName(name: string, max = 42): string {
   return clean.slice(0, max).trim();
 }
 
-function wrapLines(text: string, width: number, maxLines: number): string {
-  const clean = text.replace(/\s+/g, " ").replace(/…/g, " ").trim();
-  if (!clean) return "";
-  const lines: string[] = [];
-  let rest = clean;
-  while (rest && lines.length < maxLines) {
-    if (rest.length <= width) {
-      lines.push(rest);
-      break;
-    }
-    let cut = rest.lastIndexOf(" ", width);
-    if (cut < Math.floor(width / 2)) cut = width;
-    lines.push(rest.slice(0, cut).trim());
-    rest = rest.slice(cut).trim();
-  }
-  return lines.join("\n");
-}
-
 function escapeAss(text: string): string {
   return text.replace(/[{}\\]/g, " ").replace(/\n/g, "\\N").replace(/,/g, " ");
 }
@@ -88,22 +70,14 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
   const a = opts.durationSec * 0.34;
   const b = opts.durationSec * 0.68;
-  const title = wrapLines(opts.product.name, 20, 3) || "สินค้าแนะนำ";
   const shop = escapeAss(opts.product.shopName || "Shopee");
   const price = escapeAss(opts.product.priceText ? `฿${opts.product.priceText}` : "ราคาน่าลอง");
-  const fact = wrapLines(opts.product.description || opts.product.shopName || "", 22, 2);
   const banner = `${opts.product.priceText ? `฿${opts.product.priceText}` : "สินค้าแนะนำ"}  ${clipName(opts.product.name, 22)}`;
   const events = [
     `Dialogue: 0,${formatAssTime(0)},${formatAssTime(opts.durationSec)},Banner,,0,0,0,,${escapeAss(banner)}`,
-    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Title,,0,0,0,,{\\move(360,340,360,380)}${escapeAss(title)}`,
-    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Soft,,0,0,0,,{\\pos(360,540)}${shop}`,
-    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Soft,,0,0,0,,{\\pos(360,620)}${escapeAss(fact)}`,
-    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Price,,0,0,0,,{\\move(360,470,360,510)\\fad(120,80)}${price}`,
-    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Soft,,0,0,0,,{\\pos(360,600)}บาท`,
-    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Soft,,0,0,0,,{\\pos(360,680)}${shop}`,
-    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Title,,0,0,0,,{\\pos(360,430)\\fad(100,80)}สั่งผ่านลิงก์ในคลิป`,
-    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Gold,,0,0,0,,{\\pos(360,530)}${price}`,
-    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Soft,,0,0,0,,{\\pos(360,640)}${escapeAss(title)}`,
+    `Dialogue: 1,${formatAssTime(0)},${formatAssTime(a)},Soft,,0,0,0,,{\\an8\\pos(360,868)}${shop}`,
+    `Dialogue: 1,${formatAssTime(a)},${formatAssTime(b)},Price,,0,0,0,,{\\an5\\pos(360,908)\\fad(80,80)}${price}`,
+    `Dialogue: 1,${formatAssTime(b)},${formatAssTime(opts.durationSec)},Title,,0,0,0,,{\\an5\\pos(360,908)\\fad(80,80)}สั่งผ่านลิงก์ในคลิป`,
   ];
   const weights = opts.sentences.map((s) => Math.max(8, s.length));
   const total = weights.reduce((a, b) => a + b, 0) || 1;
